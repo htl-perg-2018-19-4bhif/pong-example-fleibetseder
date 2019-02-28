@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pong</title>
+</head>
+
+<style>
+
+    #myCanvas {
+        background-color: black;
+    }
+
+    html, body {
+        overflow: hidden;
+    }
+
+    #top {
+        top: 0;
+        position: absolute;
+        left: 0;
+        opacity: 0.0;
+        width: 100%;
+        height: 50%;
+    }
+
+    #bot {
+        position: absolute;
+        left: 0;
+        opacity: 0.0;
+        width: 100%;
+        top: 50%;
+        height: 50%;
+    }
+
+    #players {
+        left: 0;
+        position: absolute;
+        color: white;
+        font-size: 25px;
+        text-align: center;
+        top: 25%;
+        height: 100%;
+        width: 100%;
+    }
+
+    #lobbyTitle {
+        top: 2%;
+        left: 2%;
+        position: absolute;
+        width: 100%;
+        color: yellow;
+        font-size: 50px;
+        font-weight: bold;
+    }
+
+    #activePlayers {
+        position: absolute;
+        text-align: center;
+        top: 5%;
+        width: 100%;
+        color: white;
+        font-size: 40px;
+    }
+
+    #info {
+        position: absolute;
+        text-align: right;
+        top: 5%;
+        right: 2%;
+        color: white;
+        border: 5px white;
+        font-size: 50px;
+    }
+
+    .tooltiptext {
+        font-size: 20px;
+        visibility: hidden;
+        width: 120px;
+        background-color: black;
+        color: #fff;
+        text-align: center;
+        padding: 5px 0;
+        border-radius: 6px;
+
+        position: absolute;
+        z-index: 1;
+        top: 50px;
+        right: -5px;
+    }
+
+    #info:hover .tooltiptext {
+        visibility: visible;
+    }
+</style>
+
+<body>
+
+<div id="lobbyTitle">Lobby</div>
+<div id="activePlayers">Active Players:</div>
+<div id="info">?
+    <span class="tooltiptext">To start a game simply click on the player you want to play with.</span>
+</div>
+<div id="players"></div>
+
+<canvas id="myCanvas" width="100%" height="100%"></canvas>
+
+</body>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    var Player = /** @class */ (function () {
+        function Player(name, id, player2Id) {
+            this.name = name;
+            this.id = id;
+            this.player2Id = player2Id;
+        }
+        return Player;
+    }());
+    var me = new Player();
+
+    do{
+        me.name = prompt("Please enter your name for joining the lobby:", "");
+        console.log("name: " + me.name);
+    }while(me.name === null);
+
+    var playersInLobby = [];
+
+    var socket = io();
+    socket.emit('nameSent', me.name);
+
+    socket.on('sendList', function (list) {
+        playersInLobby = list;
+        me = playersInLobby[playersInLobby.length - 1];
+        console.log("me: " + me.id);
+        createLobby();
+    });
+
+    socket.on('sendListF5', function (list) {
+        if(list.length !== playersInLobby.length){
+            playersInLobby = list;
+            createLobby(true);
+        }
+    });
+
+    socket.on('initGameFor', function (player2Id) {
+        if(player2Id === me.id){
+            initGame(-1, false);
+        }
+    });
+
+    socket.on('refreshBatLoc', function (message) {
+        var arr = message.split("/");
+        console.log("ADFAF: " + parseInt(arr[1]));
+
+       if(me.id === parseInt(arr[1])){
+           console.log("LOLOLOLOL");
+           if(leftPlayer){
+               batLeftY = parseInt(arr[0]);
+           }else{
+               batRightY = parseInt(arr[0]);
+           }
+       }
+    });
+
+
+    var canvas = document.getElementById('myCanvas');
+    var topSide = document.getElementById('top');
+    var botSide = document.getElementById('bot');
+    var ctx;
+    var mid = window.innerHeight / 2;
+    var batWidth = 20;
+    var batHeight = 150;
+    var batDistance = 50;
+    var netPartWidth = 10;
+    var netPartHeight = 50;
+    var ballWidth = 10;
+    var ballHeight = 10;
+    const ballXConst = window.innerWidth / 2 - ballWidth / 2;
+    const ballYConst = Math.floor(Math.random() * (window.innerHeight - ballHeight));
+    var ballX;
+    var ballY;
+    var angleX;
+    var angleY;
+
+    var score1 = 0;
+    var score2 = 0;
+    var spawned = false;
+
+    var mobileDevice = (typeof window.orientation !== "undefined") || (navigator.userAgent.indexOf('IEMobile') !== -1);
+
+    var batLeftX = batDistance;
+    var batLeftY = mid - batHeight / 2;
+    var batRightX = window.innerWidth - batDistance * 2;
+    var batRightY = mid - batHeight / 2;
+
+    var interval = 45;
+    var leftPlayer;
+
+    if (isCanvas(canvas)) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        ctx = canvas.getContext("2d");
+    }
+
+    function isCanvas(obj) {
+        return obj.tagName === 'CANVAS';
+    }
+
+    function createLobby(repaint) {
+        var players = document.getElementById('players');
+
+        if(repaint){
+            while(players.firstChild){
+                players.removeChild(players.firstChild);
+            }
+        }
+
+        for (var i = 0; i < playersInLobby.length; i++) {
+            var newPlayer = document.createElement('div');
+            newPlayer.innerHTML = playersInLobby[i].name;
+            if(i === me.id){
+                newPlayer.style.color = 'orange';
+            }else{
+                var tempId = playersInLobby[i].id;
+                newPlayer.onclick = function () {
+                    initGame(tempId, true);
+                };
+            }
+
+            players.appendChild(newPlayer);
+        }
+    }
+
+    function initGame(player2Id, origin) {
+        document.body.removeChild(document.getElementById('lobbyTitle'));
+        document.body.removeChild(document.getElementById('activePlayers'));
+        document.body.removeChild(document.getElementById('info'));
+        document.body.removeChild(document.getElementById('players'));
+
+        if (mobileDevice) {
+            topSide.ontouchend = function () {
+                moveBatUpwards();
+            };
+            botSide.ontouchend = function () {
+                moveBatDownwards();
+            };
+
+            var topDiv = document.createElement('div');
+            var botDiv = document.createElement('div');
+            topDiv.id = "top";
+            botDiv.id = "bot";
+
+            document.body.appendChild(topDiv);
+            document.body.appendChild(botDiv);
+        }
+
+        if(origin){
+            socket.emit('initGame', player2Id);
+            leftPlayer = false;
+            console.log("on the right side");
+        }else{
+            leftPlayer = true;
+            console.log("on the left side");
+        }
+
+        paint();
+        spawnBall();
+    }
+
+    function drawBats() {
+        ctx.fillStyle = "white";
+        ctx.fillRect(batLeftX, batLeftY, batWidth, batHeight);
+        ctx.fillRect(batRightX, batRightY, batWidth, batHeight);
+    }
+
+    function drawNet() {
+        var height = window.innerHeight;
+        for (var y = 25; y < height; y += 75) {
+            ctx.fillRect(window.innerWidth / 2 - netPartWidth / 2, y, netPartWidth, netPartHeight);
+        }
+    }
+
+    function drawBall() {
+        ctx.fillStyle = "blue";
+        ctx.fillRect(ballX, ballY, ballWidth, ballHeight);
+    }
+
+    function drawScores() {
+        ctx.fillStyle = "white";
+        ctx.font = "bold 50px Arial";
+        ctx.fillText(score1, (canvas.width / 4), (canvas.height / 7));
+        ctx.fillText(score2, (canvas.width * 0.75), (canvas.height / 7));
+    }
+
+    function paint() {
+        ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+        drawBats();
+        drawNet();
+        drawBall();
+        drawScores();
+    }
+
+    document.body.onkeydown = function (event) {
+        if (event.which === 40) {
+            if(leftPlayer){
+                socket.emit('batLocChanged', batLeftY + "/" + me.player2Id);
+            }else{
+                socket.emit('batLocChanged', batRightY + "/" + me.player2Id);
+            }
+            moveBatDownwards();
+        }
+        else if (event.which === 38) {
+            if(leftPlayer){
+                socket.emit('batLocChanged', batLeftY + "/" + me.player2Id);
+            }else{
+                socket.emit('batLocChanged', batRightY + "/" + me.player2Id);
+            }
+            moveBatUpwards();
+        }
+    };
+
+    function moveBatDownwards() {
+        if(leftPlayer){
+            batLeftY += 20;
+        }else{
+            batRightY += 20;
+        }
+        paint();
+    }
+
+    function moveBatUpwards() {
+        if(leftPlayer){
+            batLeftY -= 20;
+        }else{
+            batRightY -= 20;
+        }
+        paint();
+    }
+
+    function moveBall() {
+
+        // Left side
+        if (ballX <= batLeftX + batWidth && ballY + ballHeight > batLeftY && ballY < batLeftY + batHeight) {
+            angleX *= -1;
+            // Right side
+        } else if (ballX + ballWidth >= batRightX && ballY + ballHeight > batRightY && ballY < batRightY + batHeight) {
+            angleX *= -1;
+        } else {
+            if (ballY + ballHeight >= window.innerHeight || ballY <= 0) {
+                angleY *= -1;
+            }else{
+                if (ballX + ballWidth >= window.innerWidth - 50) {
+                    if(leftPlayer){
+                        score1++;
+                    }else{
+                        score2++;
+                    }
+                    spawnBall();
+                    spawned = true;
+                }else if(ballX <= batDistance + batWidth){
+                    if(leftPlayer){
+                        score2++;
+                    }else{
+                        score1++;
+                    }
+                    spawnBall();
+                    spawned = true;
+                }
+            }
+        }
+
+        if (!spawned) {
+            ballX += angleX;
+            ballY += angleY;
+            paint();
+
+            setTimeout(moveBall, interval);
+        } else {
+            spawned = false;
+        }
+    }
+
+    function spawnBall() {
+        ballX = ballXConst;
+        ballY = ballYConst;
+        ctx.fillRect(ballX, ballY, ballWidth, ballHeight);
+
+        do {
+            angleX = Math.floor(Math.random() * 26) - 15;
+            angleY = Math.floor(Math.random() * 26) - 15;
+        } while (angleX === 0 || angleY === 0 || (angleX <= 5 && angleX >= -5) || (angleY <= 5 && angleY >= -5));
+        console.log("x");
+        moveBall();
+    }
+</script>
+</html>

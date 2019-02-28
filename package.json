@@ -1,0 +1,22 @@
+{
+  "name": "pong_serverside",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "com": "npm run build && node server.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/express": "^4.16.1",
+    "@types/node": "^11.9.5",
+    "@types/socket.io": "^2.1.2",
+    "typescript": "^3.3.3333"
+  },
+  "dependencies": {
+    "express": "^4.16.4",
+    "socket.io": "^2.2.0"
+  }
+}
